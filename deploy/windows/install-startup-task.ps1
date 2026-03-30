@@ -7,6 +7,27 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $Runner = Join-Path $RepoRoot "deploy\windows\run-client.ps1"
 
+$IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $IsAdmin) {
+  Write-Host "Administrator privileges are required to create a startup task."
+  $scriptPath = $MyInvocation.MyCommand.Path
+  $args = @(
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    $scriptPath,
+    "-TaskName",
+    $TaskName,
+    "-PythonExe",
+    $PythonExe
+  )
+  Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $args | Out-Null
+  exit 0
+}
+
 if (-not (Test-Path (Join-Path $RepoRoot ".env"))) {
   Write-Error "Missing .env in $RepoRoot. Copy .env.example first."
   exit 1
