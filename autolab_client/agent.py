@@ -25,12 +25,8 @@ def _load_dotenv() -> None:
 def _get_config(args: argparse.Namespace) -> tuple[str, str, str, float]:
     url = (args.url or os.getenv("HARDWARE_PUSH_URL", "")).strip()
     token = (args.token or os.getenv("HARDWARE_PUSH_TOKEN", "")).strip()
-    raw_device = (args.device or os.getenv("HARDWARE_DEVICE_NAME", "")).strip()
-    if raw_device:
-        device = normalize_device_name(raw_device) or get_local_device_name()
-    else:
-        device = get_local_device_name()
-    interval = float(args.interval or os.getenv("HARDWARE_PUSH_INTERVAL", "10"))
+    device = normalize_device_name(args.device) or get_local_device_name()
+    interval = float(args.interval or os.getenv("HARDWARE_PUSH_INTERVAL", "60"))
     return url, token, device, interval
 
 
@@ -76,4 +72,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

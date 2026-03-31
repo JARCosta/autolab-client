@@ -388,6 +388,14 @@ def run_push_loop(
     verbose: bool = False,
 ) -> None:
     iv = max(1.0, float(interval))
+    ngrok_min_iv = max(1.0, float(os.getenv("HARDWARE_PUSH_NGROK_MIN_INTERVAL", "60")))
+    if "ngrok" in url.lower() and iv < ngrok_min_iv:
+        log.warning(
+            "Detected ngrok URL; increasing push interval from %ss to %ss to reduce free-tier request usage.",
+            iv,
+            ngrok_min_iv,
+        )
+        iv = ngrok_min_iv
     ok, gpu_msg = verify_nvidia_gpu()
     log.info(
         "Client started (interval=%ss -> ~%d samples/cycle, device=%s, url=%s, gpu=%s)",
