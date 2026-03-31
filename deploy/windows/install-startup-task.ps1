@@ -41,7 +41,7 @@ if ($null -ne $existing) {
 
 $action = New-ScheduledTaskAction `
   -Execute "powershell.exe" `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$Runner`" -PythonExe `"$PythonExe`""
+  -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Runner`" -PythonExe `"$PythonExe`""
 
 try {
   $trigger = New-ScheduledTaskTrigger -AtStartup
