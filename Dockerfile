@@ -8,6 +8,6 @@ WORKDIR /app
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-COPY autolab_client /app/autolab_client
+COPY autolab_node /app/autolab_node
 
-ENTRYPOINT ["python", "-m", "autolab_client"]
+ENTRYPOINT ["python", "-m", "autolab_node"]

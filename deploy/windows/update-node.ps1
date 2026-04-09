@@ -1,5 +1,5 @@
 param(
-  [string]$TaskName = "AutoLabClient"
+  [string]$TaskName = "AutoLabNode"
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,7 +17,7 @@ if (-not $IsAdmin) {
   exit 0
 }
 
-Write-Host "Pulling latest client from git..."
+Write-Host "Pulling latest node from git..."
 if (Test-Path ".git") {
   git pull
 } else {
@@ -33,7 +33,7 @@ if ((Test-Path $VenvPython) -and (Test-Path $Req)) {
 
 $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($null -eq $task) {
-  Write-Host "No scheduled task '$TaskName'. If the client runs manually, restart it yourself."
+  Write-Host "No scheduled task '$TaskName'. If the node runs manually, restart it yourself."
   exit 0
 }
 

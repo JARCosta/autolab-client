@@ -1,0 +1,18 @@
+[Unit]
+Description=AutoLab hardware push node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__WORKDIR__
+EnvironmentFile=__WORKDIR__/.env
+ExecStartPre=/usr/bin/bash -c 'cd __WORKDIR__ && git fetch origin && git pull --ff-only || true'
+ExecStartPre=/usr/bin/bash -c 'cd __WORKDIR__ && docker build -t autolab-node:latest .'
+ExecStart=/usr/bin/bash -lc 'docker run --rm --name autolab-node --env-file __WORKDIR__/.env -p 8765:8765 autolab-node:latest'
+ExecStop=/usr/bin/bash -lc 'docker stop autolab-node || true'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

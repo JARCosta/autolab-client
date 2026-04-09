@@ -1,11 +1,11 @@
 param(
-  [string]$TaskName = "AutoLabClient",
+  [string]$TaskName = "AutoLabNode",
   [string]$PythonExe = "py"
 )
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$Runner = Join-Path $RepoRoot "deploy\windows\run-client.ps1"
+$Runner = Join-Path $RepoRoot "deploy\windows\run-node.ps1"
 
 $IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
 ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)

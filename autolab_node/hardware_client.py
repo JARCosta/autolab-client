@@ -15,7 +15,7 @@ from typing import Any
 
 from .logging_config import setup_logging
 
-log = setup_logging("autolab_client")
+log = setup_logging("autolab_node")
 
 _DEVICE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
 _TEMP_KEYS = ("coretemp", "k10temp", "cpu_thermal", "acpitz", "zenpower")
@@ -362,69 +362,34 @@ def push_samples(
     samples: list[dict[str, Any]],
     *,
     timeout: float | None = None,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, bool | None]:
+    """POST metrics to ``/api/monitor/push``.
+
+    On success, the third tuple element is ``pong`` from the JSON body when the
+    server sends it (viewer still watching); ``None`` if the key is absent
+    (older servers).
+    """
     try:
         import requests
     except ImportError:
-        return False, "requests not installed"
+        return False, "requests not installed", None
 
     payload = {"token": token, "device": device, "samples": samples}
     req_timeout = timeout if timeout is not None else max(60.0, float(len(samples)) * 5.0)
     try:
         r = requests.post(url, json=payload, timeout=req_timeout)
         r.raise_for_status()
-        return True, "ok"
+        pong: bool | None
+        try:
+            body = r.json()
+        except ValueError:
+            body = None
+        if isinstance(body, dict) and "pong" in body:
+            pong = bool(body.get("pong"))
+        else:
+            pong = None
+        return True, "ok", pong
     except requests.RequestException as e:
-        return False, str(e)
+        return False, str(e), None
 
-
-def run_push_loop(
-    url: str,
-    token: str,
-    device: str,
-    interval: float,
-    *,
-    kill_event: threading.Event | None = None,
-    verbose: bool = False,
-) -> None:
-    iv = max(1.0, float(interval))
-    ngrok_min_iv = max(1.0, float(os.getenv("HARDWARE_PUSH_NGROK_MIN_INTERVAL", "60")))
-    if "ngrok" in url.lower() and iv < ngrok_min_iv:
-        log.warning(
-            "Detected ngrok URL; increasing push interval from %ss to %ss to reduce free-tier request usage.",
-            iv,
-            ngrok_min_iv,
-        )
-        iv = ngrok_min_iv
-    ok, gpu_msg = verify_nvidia_gpu()
-    log.info(
-        "Client started (interval=%ss -> first push in ~1s with 1 sample, then ~%d samples/cycle, device=%s, url=%s, gpu=%s)",
-        iv,
-        max(1, int(round(iv))),
-        device,
-        url,
-        gpu_msg if ok else f"off ({gpu_msg})",
-    )
-
-    first_cycle = True
-    while kill_event is None or not kill_event.is_set():
-        cycle_interval = 1.0 if first_cycle else iv
-        samples = collect_samples_over_interval(cycle_interval, kill_event=kill_event)
-        first_cycle = False
-        if not samples:
-            wait_seconds = max(1.0, cycle_interval)
-            if kill_event is not None and kill_event.wait(timeout=wait_seconds):
-                break
-            if kill_event is None:
-                time.sleep(wait_seconds)
-            continue
-
-        success, msg = push_samples(url, token, device, samples)
-        if verbose:
-            if success:
-                print(time.strftime("%H:%M:%S"), "ok", len(samples), "samples", flush=True)
-            else:
-                print(time.strftime("%H:%M:%S"), "error:", msg, file=sys.stderr, flush=True)
-        if not success:
-            log.warning("Hardware push failed: %s", msg)
 

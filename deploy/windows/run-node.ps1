@@ -27,7 +27,7 @@ if (-not (Test-Path $VenvPython)) {
 if (-not (Test-Path $VenvPython)) {
   Write-Error @"
 Could not create .venv. Install Python 3 and ensure the launcher works, or run:
-  .\deploy\windows\run-client.ps1 -PythonExe 'C:\Path\To\python.exe'
+  .\deploy\windows\run-node.ps1 -PythonExe 'C:\Path\To\python.exe'
 Scheduled tasks as SYSTEM often lack 'py' on PATH; create the venv once interactively, or pass -PythonExe to a full python.exe path.
 "@
   exit 1
@@ -38,7 +38,7 @@ Write-Host "Installing dependencies into .venv (if needed)..."
 & $VenvPython -m pip install --disable-pip-version-check -r $Req
 
 if ($ExtraArgs) {
-  & $VenvPython -m autolab_client @($ExtraArgs.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries))
+  & $VenvPython -m autolab_node @($ExtraArgs.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries))
 } else {
-  & $VenvPython -m autolab_client
+  & $VenvPython -m autolab_node
 }
