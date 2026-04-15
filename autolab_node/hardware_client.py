@@ -337,24 +337,6 @@ def sample_system_metrics() -> dict[str, Any]:
     }
 
 
-def collect_samples_over_interval(
-    interval_seconds: float,
-    *,
-    kill_event: threading.Event | None = None,
-) -> list[dict[str, Any]]:
-    n = max(1, int(round(float(interval_seconds))))
-    out: list[dict[str, Any]] = []
-    for _ in range(n):
-        if kill_event is not None and kill_event.is_set():
-            break
-        m = sample_system_metrics()
-        if not m:
-            break
-        ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        out.append({"timestamp": ts, **m})
-    return out
-
-
 def push_samples(
     url: str,
     token: str,
