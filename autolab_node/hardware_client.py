@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import io
 import os
 import re
@@ -11,6 +12,7 @@ import sys
 import threading
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .logging_config import setup_logging
@@ -24,6 +26,10 @@ _nvidia_ok: bool | None = None
 _nvidia_message: str = ""
 _cpu_vendor_cache: str | None = None
 _gpu_lspci_cache: str | None = None
+_lhm_helper_cache: str | None = None
+
+_LHM_HELPER_ENV = "AUTOLAB_LHM_HELPER_EXE"
+_LHM_HELPER_TIMEOUT = 6
 
 
 def normalize_device_name(name: str | None) -> str:
@@ -184,6 +190,74 @@ def _sample_nvidia_fields() -> dict[str, Any]:
     }
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _resolve_lhm_helper() -> str | None:
+    global _lhm_helper_cache
+    if _lhm_helper_cache is not None:
+        return _lhm_helper_cache or None
+
+    candidates: list[Path] = []
+    env_path = os.getenv(_LHM_HELPER_ENV, "").strip()
+    if env_path:
+        candidates.append(Path(env_path))
+
+    root = _repo_root()
+    candidates.extend(
+        [
+            root / "windows" / "temperature-helper" / "publish" / "AutolabNode.TemperatureHelper.exe",
+            root / "windows" / "temperature-helper" / "publish" / "AutolabNode.TemperatureHelper.dll",
+            root / "windows" / "temperature-helper" / "bin" / "Release" / "net8.0-windows" / "win-x64" / "publish" / "AutolabNode.TemperatureHelper.exe",
+            root / "windows" / "temperature-helper" / "bin" / "Release" / "net8.0-windows" / "win-x64" / "publish" / "AutolabNode.TemperatureHelper.dll",
+            root / "windows" / "temperature-helper" / "bin" / "Release" / "net8.0-windows" / "AutolabNode.TemperatureHelper.exe",
+            root / "windows" / "temperature-helper" / "bin" / "Release" / "net8.0-windows" / "AutolabNode.TemperatureHelper.dll",
+        ]
+    )
+
+    for candidate in candidates:
+        if candidate.is_file():
+            _lhm_helper_cache = str(candidate)
+            return _lhm_helper_cache
+
+    _lhm_helper_cache = ""
+    return None
+
+
+def _sample_cpu_temp_from_lhm() -> float | None:
+    if sys.platform != "win32":
+        return None
+
+    helper = _resolve_lhm_helper()
+    if not helper:
+        return None
+
+    command = ["dotnet", helper] if helper.lower().endswith(".dll") else [helper]
+
+    try:
+        proc = subprocess.run(command, capture_output=True, text=True, timeout=_LHM_HELPER_TIMEOUT)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+
+    try:
+        payload = json.loads(proc.stdout)
+    except ValueError:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    value = payload.get("cpuTempC")
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _detect_cpu_vendor_uncached() -> str:
     if sys.platform.startswith("linux"):
         try:
@@ -216,19 +290,38 @@ def _detect_cpu_vendor_uncached() -> str:
         except (OSError, subprocess.SubprocessError):
             pass
     elif sys.platform == "win32":
-        try:
-            kwargs: dict[str, Any] = {"capture_output": True, "text": True, "timeout": 8}
-            if hasattr(subprocess, "CREATE_NO_WINDOW"):
-                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-            r = subprocess.run(["wmic", "cpu", "get", "Name"], **kwargs)
-            if r.returncode == 0 and r.stdout:
-                s = r.stdout.lower()
-                if "intel" in s:
-                    return "intel"
-                if "amd" in s:
-                    return "amd"
-        except (OSError, subprocess.SubprocessError):
-            pass
+        commands = [
+            ["wmic", "cpu", "get", "Name"],
+            [
+                "powershell",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "(Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Manufacturer)",
+            ],
+            [
+                "powershell",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "(Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name)",
+            ],
+        ]
+        kwargs: dict[str, Any] = {"capture_output": True, "text": True, "timeout": 8}
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        for command in commands:
+            try:
+                r = subprocess.run(command, **kwargs)
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if r.returncode != 0 or not r.stdout:
+                continue
+            s = r.stdout.lower()
+            if "intel" in s:
+                return "intel"
+            if "amd" in s or "authenticamd" in s:
+                return "amd"
     return "unknown"
 
 
@@ -293,17 +386,20 @@ def sample_system_metrics() -> dict[str, Any]:
     cpu_clock = freq.current if freq else None
 
     cpu_temp = None
+    if sys.platform == "win32":
+        cpu_temp = _sample_cpu_temp_from_lhm()
     try:
-        temps = psutil.sensors_temperatures()
-        if temps:
-            for key in _TEMP_KEYS:
-                if key in temps and temps[key]:
-                    cpu_temp = temps[key][0].current
-                    break
-            if cpu_temp is None:
-                first_key = next(iter(temps))
-                if temps[first_key]:
-                    cpu_temp = temps[first_key][0].current
+        if cpu_temp is None:
+            temps = psutil.sensors_temperatures()
+            if temps:
+                for key in _TEMP_KEYS:
+                    if key in temps and temps[key]:
+                        cpu_temp = temps[key][0].current
+                        break
+                if cpu_temp is None:
+                    first_key = next(iter(temps))
+                    if temps[first_key]:
+                        cpu_temp = temps[first_key][0].current
     except (AttributeError, OSError):
         pass
 

@@ -102,6 +102,30 @@ If `py` is not on `PATH` (common for **SYSTEM** scheduled tasks), either:
 - run the script once **interactively** as your user so `.venv` is created, then the task only needs `.venv\Scripts\python.exe`, or
 - pass a full Python path: `.\deploy\windows\run-node.ps1 -PythonExe 'C:\Program Files\Python312\python.exe'`
 
+### Windows CPU temperature via LibreHardwareMonitorLib
+
+The node can read CPU temperature from a small helper executable that links against `LibreHardwareMonitorLib` directly. This is the clean Windows path and does not require the LibreHardwareMonitor GUI to keep running.
+
+Build the helper on Windows with:
+
+```powershell
+dotnet publish .\windows\temperature-helper\TemperatureHelper.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\windows\temperature-helper\publish
+```
+
+If you do not want to touch the C# project directly, use the wrapper script instead:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\deploy\windows\build-temperature-helper.ps1
+```
+
+Then point the node at it if needed:
+
+```powershell
+$env:AUTOLAB_LHM_HELPER_EXE = 'C:\autolab-node\windows\temperature-helper\publish\AutolabNode.TemperatureHelper.exe'
+```
+
+If the environment variable is not set, the node looks for the helper in the repo-relative `windows\temperature-helper\publish` folder.
+
 ## Windows: automatic startup task
 
 Use PowerShell (preferably as Administrator):
